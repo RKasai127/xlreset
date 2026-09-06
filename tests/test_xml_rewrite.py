@@ -2,7 +2,12 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from xlreset.xml_rewrite import resolve_worksheet_parts, rewrite_worksheet_xml
+from xlreset.xml_rewrite import (
+    resolve_first_worksheet_part,
+    resolve_worksheet_parts,
+    rewrite_workbook_xml,
+    rewrite_worksheet_xml,
+)
 
 _MAIN_NAMESPACE_ATTR = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
 _RELATIONSHIPS_NAMESPACE_ATTR = (
@@ -101,9 +106,45 @@ def test_cell_text_resembling_attributes_is_untouched():
     assert b"<t>topLeftCell selection zoomScale</t>" in result
 
 
-def test_no_sheet_views_block_is_noop():
+def test_no_sheet_views_block_is_untouched():
     xml = b'<?xml version="1.0"?><worksheet><sheetData/></worksheet>'
     assert rewrite_worksheet_xml(xml) == xml
+
+
+def test_is_first_sheet_true_sets_tab_selected():
+    xml = _worksheet(b'<sheetViews><sheetView workbookViewId="0"/></sheetViews>')
+    result = rewrite_worksheet_xml(xml, is_first_sheet=True)
+    assert b'tabSelected="1"' in result
+
+
+def test_is_first_sheet_false_clears_existing_tab_selected():
+    xml = _worksheet(b'<sheetViews><sheetView tabSelected="1" workbookViewId="0"/></sheetViews>')
+    result = rewrite_worksheet_xml(xml, is_first_sheet=False)
+    assert b'tabSelected="0"' in result
+
+
+def test_is_first_sheet_defaults_to_false():
+    xml = _worksheet(b'<sheetViews><sheetView workbookViewId="0"/></sheetViews>')
+    result = rewrite_worksheet_xml(xml)
+    assert b'tabSelected="0"' in result
+
+
+def test_workbook_view_active_tab_reset_to_zero():
+    xml = b'<?xml version="1.0"?><workbook><bookViews><workbookView activeTab="3"/></bookViews></workbook>'
+    result = rewrite_workbook_xml(xml)
+    assert b'activeTab="0"' in result
+
+
+def test_workbook_view_gains_active_tab_when_absent():
+    xml = b'<?xml version="1.0"?><workbook><bookViews><workbookView windowWidth="100"/></bookViews></workbook>'
+    result = rewrite_workbook_xml(xml)
+    assert b'activeTab="0"' in result
+    assert b'windowWidth="100"' in result
+
+
+def test_workbook_xml_without_workbook_view_is_untouched():
+    xml = b'<?xml version="1.0"?><workbook><sheets/></workbook>'
+    assert rewrite_workbook_xml(xml) == xml
 
 
 def test_resolve_worksheet_parts_standard_name():
@@ -194,3 +235,45 @@ def test_resolve_worksheet_parts_absolute_target():
 def test_resolve_worksheet_parts_malformed_xml_raises():
     with pytest.raises(ET.ParseError):
         resolve_worksheet_parts(b"not xml <<<", b"<Relationships></Relationships>")
+
+
+def test_resolve_first_worksheet_part_returns_first_in_tab_order():
+    workbook = (
+        f"<workbook {_MAIN_NAMESPACE_ATTR} {_RELATIONSHIPS_NAMESPACE_ATTR}>"
+        "<sheets>"
+        '<sheet name="Sheet1" sheetId="1" r:id="rId1"/>'
+        '<sheet name="Sheet2" sheetId="2" r:id="rId2"/>'
+        "</sheets>"
+        "</workbook>"
+    ).encode()
+    rels = (
+        f"<Relationships {_PACKAGE_RELATIONSHIPS_NAMESPACE_ATTR}>"
+        f'<Relationship Id="rId1" Type="{_WORKSHEET_TYPE}" Target="worksheets/sheet1.xml"/>'
+        f'<Relationship Id="rId2" Type="{_WORKSHEET_TYPE}" Target="worksheets/sheet2.xml"/>'
+        "</Relationships>"
+    ).encode()
+    assert resolve_first_worksheet_part(workbook, rels) == "xl/worksheets/sheet1.xml"
+
+
+def test_resolve_first_worksheet_part_none_when_first_sheet_is_chartsheet():
+    workbook = (
+        f"<workbook {_MAIN_NAMESPACE_ATTR} {_RELATIONSHIPS_NAMESPACE_ATTR}>"
+        "<sheets>"
+        '<sheet name="Chart1" sheetId="1" r:id="rId1"/>'
+        '<sheet name="Data" sheetId="2" r:id="rId2"/>'
+        "</sheets>"
+        "</workbook>"
+    ).encode()
+    rels = (
+        f"<Relationships {_PACKAGE_RELATIONSHIPS_NAMESPACE_ATTR}>"
+        f'<Relationship Id="rId1" Type="{_CHARTSHEET_TYPE}" Target="chartsheets/sheet1.xml"/>'
+        f'<Relationship Id="rId2" Type="{_WORKSHEET_TYPE}" Target="worksheets/sheet1.xml"/>'
+        "</Relationships>"
+    ).encode()
+    assert resolve_first_worksheet_part(workbook, rels) is None
+
+
+def test_resolve_first_worksheet_part_none_when_no_sheets():
+    workbook = f"<workbook {_MAIN_NAMESPACE_ATTR} {_RELATIONSHIPS_NAMESPACE_ATTR}><sheets/></workbook>".encode()
+    rels = f"<Relationships {_PACKAGE_RELATIONSHIPS_NAMESPACE_ATTR}></Relationships>".encode()
+    assert resolve_first_worksheet_part(workbook, rels) is None
