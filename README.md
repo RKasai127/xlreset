@@ -1,6 +1,10 @@
 # xlreset
 CLI to set Excel's initial view to cell A1 and 100% zoom.
 
+| Before | After |
+| --- | --- |
+| ![Before: scrolled, zoomed, wrong cell selected](docs/screenshot-before.png) | ![After: A1 selected at 100% zoom](docs/screenshot-after.png) |
+
 ## Install
 
 ```sh
@@ -20,13 +24,10 @@ the given `.xlsx`/`.xlsm` file, xlreset sets:
 - zoom to 100% (`zoomScale` and `zoomScaleNormal`)
 - the active cell/selection (`activeCell`, `sqref`) to `A1`
 
-It leaves untouched: frozen panes, sheet protection, macros (`vbaProject.bin`
-in `.xlsm` files), and everything else in the workbook.
+Everything else is left untouched.
 
-xlreset is a CLI-only tool with no configuration flags in this version.
-Feature requests should be filed as
-[GitHub issues](https://github.com/RKasai127/xlreset/issues) rather than
-expected as flags.
+xlreset is a CLI-only tool with no configuration flags. Feature requests?
+Please [open a GitHub issue](https://github.com/RKasai127/xlreset/issues).
 
 ## License
 
