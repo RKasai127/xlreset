@@ -31,6 +31,34 @@ _SHEET_FROZEN = b"""<?xml version="1.0" encoding="UTF-8"?>
 </worksheet>
 """
 
+_SHEET_CURRENTLY_ACTIVE = b"""<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetViews><sheetView tabSelected="1" workbookViewId="0">
+<selection activeCell="A1" sqref="A1"/></sheetView></sheetViews>
+<sheetData/>
+</worksheet>
+"""
+
+_WORKBOOK_XML_SECOND_SHEET_ACTIVE = b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<bookViews><workbookView activeTab="1"/></bookViews>
+<sheets>
+<sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+<sheet name="Sheet2" sheetId="2" r:id="rId2"/>
+</sheets>
+</workbook>
+"""
+
+_WORKBOOK_XML_FIRST_SHEET_ALREADY_ACTIVE = b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<bookViews><workbookView activeTab="0"/></bookViews>
+<sheets>
+<sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+<sheet name="Sheet2" sheetId="2" r:id="rId2"/>
+</sheets>
+</workbook>
+"""
+
 
 def test_multi_sheet_workbook_all_sheets_rewritten(tmp_xlsx):
     path = tmp_xlsx(
@@ -74,6 +102,49 @@ def test_freeze_pane_untouched_but_sheet_view_still_rewritten(tmp_xlsx):
         in data
     )
     assert b'<sheetView workbookViewId="0" topLeftCell="A1"' in data
+
+
+def test_active_tab_reset_to_first_sheet(tmp_xlsx):
+    path = tmp_xlsx(
+        {
+            "xl/workbook.xml": _WORKBOOK_XML_SECOND_SHEET_ACTIVE,
+            "xl/worksheets/sheet1.xml": _SHEET_SCROLLED,
+            "xl/worksheets/sheet2.xml": _SHEET_CURRENTLY_ACTIVE,
+        },
+        worksheet_paths=("xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"),
+    )
+    reset_view(path)
+    with zipfile.ZipFile(path) as zf:
+        workbook_xml = zf.read("xl/workbook.xml")
+        sheet1 = zf.read("xl/worksheets/sheet1.xml")
+        sheet2 = zf.read("xl/worksheets/sheet2.xml")
+
+    assert b'activeTab="0"' in workbook_xml
+    assert b'activeTab="1"' not in workbook_xml
+    assert b'tabSelected="1"' in sheet1
+    assert b'tabSelected="0"' in sheet2
+    assert b'tabSelected="1"' not in sheet2
+
+
+def test_active_tab_already_first_sheet_stays_active(tmp_xlsx):
+    path = tmp_xlsx(
+        {
+            "xl/workbook.xml": _WORKBOOK_XML_FIRST_SHEET_ALREADY_ACTIVE,
+            "xl/worksheets/sheet1.xml": _SHEET_CURRENTLY_ACTIVE,
+            "xl/worksheets/sheet2.xml": _SHEET_SCROLLED,
+        },
+        worksheet_paths=("xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"),
+    )
+    reset_view(path)
+    with zipfile.ZipFile(path) as zf:
+        workbook_xml = zf.read("xl/workbook.xml")
+        sheet1 = zf.read("xl/worksheets/sheet1.xml")
+        sheet2 = zf.read("xl/worksheets/sheet2.xml")
+
+    assert b'activeTab="0"' in workbook_xml
+    assert b'tabSelected="1"' in sheet1
+    assert b'tabSelected="0"' in sheet2
+    assert b'tabSelected="1"' not in sheet2
 
 
 def test_non_worksheet_parts_untouched(tmp_xlsx):

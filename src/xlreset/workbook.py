@@ -6,7 +6,14 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from xlreset.xml_rewrite import resolve_worksheet_parts, rewrite_worksheet_xml
+from xlreset.xml_rewrite import (
+    resolve_first_worksheet_part,
+    resolve_worksheet_parts,
+    rewrite_workbook_xml,
+    rewrite_worksheet_xml,
+)
+
+_WORKBOOK_XML_PATH = "xl/workbook.xml"
 
 
 class XlresetError(Exception):
@@ -16,6 +23,9 @@ class XlresetError(Exception):
 def reset_view(path: Path) -> None:
     """Rewrite every worksheet's view in the .xlsx/.xlsm at `path`, in place.
 
+    For every sheet, resets scroll position/zoom/selection to A1/100%, and
+    makes the first sheet (in tab order) the active tab.
+
     Raises XlresetError for a bad zip, a zip missing xl/workbook.xml or
     its relationships, or a workbook with no worksheet parts (e.g. an old
     .xls, an .xlsb, or an unrelated file); propagates OSError for
@@ -23,14 +33,16 @@ def reset_view(path: Path) -> None:
     """
     try:
         with zipfile.ZipFile(path, "r") as src:
-            infos: list[zipfile.ZipInfo] = src.infolist()
-            originals = {info.filename: src.read(info.filename) for info in infos}
+            zip_infos: list[zipfile.ZipInfo] = src.infolist()
+            original_content_by_path: dict[str, bytes] = {
+                zip_info.filename: src.read(zip_info.filename) for zip_info in zip_infos
+            }
     except zipfile.BadZipFile as exc:
         raise XlresetError(f"not a valid zip/xlsx file: {exc}") from exc
 
     try:
-        workbook_xml = originals["xl/workbook.xml"]
-        workbook_rels_xml = originals["xl/_rels/workbook.xml.rels"]
+        workbook_xml = original_content_by_path[_WORKBOOK_XML_PATH]
+        workbook_rels_xml = original_content_by_path["xl/_rels/workbook.xml.rels"]
     except KeyError as exc:
         raise XlresetError(
             f"missing required part {exc} "
@@ -40,6 +52,7 @@ def reset_view(path: Path) -> None:
 
     try:
         worksheet_paths: set[str] = resolve_worksheet_parts(workbook_xml, workbook_rels_xml)
+        active_worksheet_path = resolve_first_worksheet_part(workbook_xml, workbook_rels_xml)
     except ET.ParseError as exc:
         raise XlresetError(f"could not parse workbook structure: {exc}") from exc
 
@@ -56,11 +69,15 @@ def reset_view(path: Path) -> None:
             os.fdopen(tmp_file_descriptor, "wb") as tmp_file,
             zipfile.ZipFile(tmp_file, "w", strict_timestamps=False) as dst,
         ):
-            for info in infos:
-                data = originals[info.filename]
-                if info.filename in worksheet_paths:
-                    data = rewrite_worksheet_xml(data)
-                dst.writestr(info, data)
+            for zip_info in zip_infos:
+                content = original_content_by_path[zip_info.filename]
+                if zip_info.filename == _WORKBOOK_XML_PATH:
+                    content = rewrite_workbook_xml(content)
+                elif zip_info.filename in worksheet_paths:
+                    content = rewrite_worksheet_xml(
+                        content, is_first_sheet=zip_info.filename == active_worksheet_path
+                    )
+                dst.writestr(zip_info, content)
         os.replace(tmp_path, path)
     except Exception:
         tmp_path.unlink(missing_ok=True)

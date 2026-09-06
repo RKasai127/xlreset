@@ -23,6 +23,7 @@ the given `.xlsx`/`.xlsm` file, xlreset sets:
 - scroll position (`topLeftCell`) to `A1`
 - zoom to 100% (`zoomScale` and `zoomScaleNormal`)
 - the active cell/selection (`activeCell`, `sqref`) to `A1`
+- the active tab to the first sheet
 
 Everything else is left untouched.
 

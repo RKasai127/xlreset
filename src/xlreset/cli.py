@@ -13,7 +13,10 @@ _EXIT_FAILURE = 1
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="xlreset",
-        description="Reset every sheet in an Excel (.xlsx/.xlsm) file to cell A1 at 100% zoom.",
+        description=(
+            "Reset every sheet in an Excel (.xlsx/.xlsm) file to cell A1 at 100% zoom, "
+            "and make the first sheet the active tab."
+        ),
     )
     parser.add_argument(
         "file",
