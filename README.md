@@ -1,5 +1,6 @@
-# xlreset
-CLI to set Excel's initial view to cell A1 and 100% zoom.
+<img src="docs/eyecatch-banner.png" alt="xlreset" width="100%">
+
+<h3 align="center"><em>xlreset is a zero-dependency CLI that resets every sheet back to A1, 100% zoom.</em></h3>
 
 | Before | After |
 | --- | --- |
